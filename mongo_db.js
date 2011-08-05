@@ -18,8 +18,8 @@ exports.database = function( settings ) {
   this.settings = settings;
   
   // taken from sqlite settings
-  this.settings.cache = 1000;
-  this.settings.writeInterval = 100;
+  this.settings.cache = 0;
+  this.settings.writeInterval = 0;
   this.settings.json = true;
 }
 
@@ -29,6 +29,8 @@ exports.database.prototype.init = function( callback ) {
 	var serverSpec = new mongodb.Server( self.settings.host, self.settings.port, { 'auto_reconnect' : true } );
 
 	var connection = new mongodb.Db( self.settings.db, serverSpec );
+
+	// XXX: this could probably be cleaned up with async.waterfall
 
 	connection.open( function( err, db ) {
 		if( err ) {
@@ -47,7 +49,15 @@ exports.database.prototype.init = function( callback ) {
 				} else {
 					self.collection = collection;
 
-					callback();
+					self.collection.createIndex( 'key', { 'unique' : true }, function( err ) {
+						if( err ) {
+							console.error( err );
+
+							throw new Error( 'Failed to create unique key index!' );
+						} else {
+							callback();
+						}
+					});
 				}
 			});
 		}
@@ -66,7 +76,7 @@ exports.database.prototype.set = function( key, value, callback ) {
 		'value'	: value
 	};
 
-	this.collection.insert( record, { 'safe' : 1 }, function( err ) {
+	this.collection.update( { 'key' : key }, record, { 'upsert' : true, 'safe' : true }, function( err ) {
 		callback( err );
 	});
 }
